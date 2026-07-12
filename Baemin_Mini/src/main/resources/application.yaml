@@ -1,3 +1,30 @@
-spring:
+﻿spring:
   application:
     name: Baemin_Mini
+  profiles:
+    active: ${APP_PROFILE:dev}
+
+server:
+  port: ${SERVER_PORT:8080}
+
+app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}
+  jwt:
+    secret: ${JWT_SECRET:baemin-mini-demo-secret-key-change-me-please-2026}
+    issuer: ${JWT_ISSUER:baemin-mini}
+    access-token-ttl-minutes: ${JWT_ACCESS_TOKEN_TTL_MINUTES:480}
+    refresh-token-ttl-days: ${JWT_REFRESH_TOKEN_TTL_DAYS:7}
+  upload:
+    root-dir: ${UPLOAD_ROOT_DIR:uploads}
+    public-path: ${UPLOAD_PUBLIC_PATH:/uploads}
+    max-image-size-mb: ${UPLOAD_MAX_IMAGE_SIZE_MB:5}
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+    disable-swagger-default-url: true
+    operations-sorter: alpha
+    tags-sorter: alpha
