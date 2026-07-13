@@ -3,6 +3,7 @@ package com.baemin_mini.dto;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import java.math.BigDecimal;
 import java.util.List;
 import lombok.Data;
 
@@ -11,8 +12,14 @@ public class OrderRequest {
     @NotNull(message = "Restaurant ID is required")
     private Long restaurantId;
 
-    @NotNull(message = "Address ID is required")
-    private Long addressId;
+    @NotNull(message = "Delivery address is required")
+    private String deliveryAddress;
+
+    @NotNull(message = "Latitude is required")
+    private BigDecimal latitude;
+
+    @NotNull(message = "Longitude is required")
+    private BigDecimal longitude;
 
     private String voucherCode;
 
