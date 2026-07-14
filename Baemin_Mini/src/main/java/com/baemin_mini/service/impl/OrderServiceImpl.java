@@ -25,6 +25,8 @@ import com.baemin_mini.repository.OrderTrackingRepository;
 import com.baemin_mini.repository.RestaurantRepository;
 import com.baemin_mini.service.FeeService;
 import com.baemin_mini.service.OrderService;
+import com.baemin_mini.service.ShipperAssignmentService;
+import com.baemin_mini.service.SseService;
 import com.baemin_mini.service.VoucherService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -43,6 +45,8 @@ public class OrderServiceImpl implements OrderService {
     private final MenuItemRepository menuItemRepository;
     private final FeeService feeService;
     private final VoucherService voucherService;
+    private final ShipperAssignmentService shipperAssignmentService;
+    private final SseService sseService;
 
     @Override
     @Transactional(readOnly = true)
@@ -158,6 +162,9 @@ public class OrderServiceImpl implements OrderService {
         savedOrder.addTracking(tracking);
         // Note: tracking is cascade saved via order
 
+        // Notify Restaurant via SSE
+        sseService.notifyRestaurant(restaurant.getId(), "NEW_ORDER", "You have a new order: " + savedOrder.getId());
+
         return mapToResponse(savedOrder);
     }
 
@@ -211,6 +218,11 @@ public class OrderServiceImpl implements OrderService {
         order.addTracking(tracking);
 
         Order savedOrder = orderRepository.save(order);
+
+        if (newStatus == OrderStatus.READY_FOR_PICKUP) {
+            shipperAssignmentService.assignNearestShipper(savedOrder.getId());
+        }
+
         return mapToResponse(savedOrder);
     }
 
