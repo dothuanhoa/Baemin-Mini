@@ -1,0 +1,137 @@
+{
+  "info": {
+    "name": "Baemin Mini - Auth and Address",
+    "description": "Postman collection for Baemin Mini core auth and user address APIs.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "accessToken", "value": "" },
+    { "key": "refreshToken", "value": "" },
+    { "key": "addressId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Auth - Login customer01",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "pm.test('login success', function () { pm.expect(json.success).to.eql(true); });",
+              "pm.collectionVariables.set('accessToken', json.data.accessToken);",
+              "pm.collectionVariables.set('refreshToken', json.data.refreshToken);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"customer01\",\n  \"password\": \"123456\"\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/api/v1/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "login"] }
+      }
+    },
+    {
+      "name": "Users - Me",
+      "request": {
+        "method": "GET",
+        "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+        "url": { "raw": "{{baseUrl}}/api/v1/users/me", "host": ["{{baseUrl}}"], "path": ["api", "v1", "users", "me"] }
+      }
+    },
+    {
+      "name": "Addresses - List",
+      "request": {
+        "method": "GET",
+        "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+        "url": { "raw": "{{baseUrl}}/api/v1/users/addresses", "host": ["{{baseUrl}}"], "path": ["api", "v1", "users", "addresses"] }
+      }
+    },
+    {
+      "name": "Addresses - Create",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "pm.test('create address success', function () { pm.expect(json.success).to.eql(true); });",
+              "pm.collectionVariables.set('addressId', json.data.id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Công ty\",\n  \"receiverName\": \"Khách Test\",\n  \"receiverPhone\": \"0700000001\",\n  \"addressLine\": \"456 Lê Lợi, Quận 1, TP.HCM\",\n  \"latitude\": 10.775,\n  \"longitude\": 106.7,\n  \"isDefault\": true\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/api/v1/users/addresses", "host": ["{{baseUrl}}"], "path": ["api", "v1", "users", "addresses"] }
+      }
+    },
+    {
+      "name": "Addresses - Update",
+      "request": {
+        "method": "PUT",
+        "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Văn phòng\",\n  \"receiverName\": \"Khách Updated\",\n  \"receiverPhone\": \"0700000002\",\n  \"addressLine\": \"789 Hai Bà Trưng, Quận 3, TP.HCM\",\n  \"latitude\": 10.78,\n  \"longitude\": 106.69,\n  \"isDefault\": false\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/api/v1/users/addresses/{{addressId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "users", "addresses", "{{addressId}}"] }
+      }
+    },
+    {
+      "name": "Addresses - Delete",
+      "request": {
+        "method": "DELETE",
+        "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+        "url": { "raw": "{{baseUrl}}/api/v1/users/addresses/{{addressId}}", "host": ["{{baseUrl}}"], "path": ["api", "v1", "users", "addresses", "{{addressId}}"] }
+      }
+    },
+    {
+      "name": "Auth - Refresh token",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "pm.test('refresh success', function () { pm.expect(json.success).to.eql(true); });",
+              "pm.collectionVariables.set('accessToken', json.data.accessToken);",
+              "pm.collectionVariables.set('refreshToken', json.data.refreshToken);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" },
+        "url": { "raw": "{{baseUrl}}/api/v1/auth/refresh", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "refresh"] }
+      }
+    },
+    {
+      "name": "Auth - Logout",
+      "request": {
+        "method": "POST",
+        "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" },
+        "url": { "raw": "{{baseUrl}}/api/v1/auth/logout", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "logout"] }
+      }
+    }
+  ]
+}
