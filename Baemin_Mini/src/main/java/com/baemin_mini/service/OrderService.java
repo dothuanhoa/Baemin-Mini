@@ -1,17 +1,22 @@
 package com.baemin_mini.service;
 
-import com.baemin_mini.dto.OrderFeeRequest;
-import com.baemin_mini.dto.OrderFeeResponse;
-import com.baemin_mini.dto.OrderRequest;
-import com.baemin_mini.dto.OrderResponse;
-import com.baemin_mini.dto.OrderTrackingResponse;
+import com.baemin_mini.dto.order.OrderFeeRequest;
+import com.baemin_mini.dto.order.OrderFeeResponse;
+import com.baemin_mini.dto.order.OrderRequest;
+import com.baemin_mini.dto.order.OrderResponse;
+import com.baemin_mini.dto.order.OrderTrackingResponse;
 import java.util.List;
 
 public interface OrderService {
     OrderFeeResponse calculateFee(OrderFeeRequest request);
-    OrderResponse createOrder(Long customerId, OrderRequest request);
-    List<OrderResponse> getMyOrders(Long customerId);
-    List<OrderResponse> getRestaurantOrders(Long restaurantId);
-    List<OrderTrackingResponse> getOrderTracking(Long orderId);
-    OrderResponse updateOrderStatus(Long orderId, String statusStr, Long actorId, String actorRole);
+
+    OrderResponse createOrder(String username, OrderRequest request);
+
+    List<OrderResponse> getMyOrders(String username);
+
+    List<OrderResponse> getRestaurantOrders(String username, Long restaurantId);
+
+    List<OrderTrackingResponse> getOrderTracking(String username, Long orderId);
+
+    OrderResponse updateOrderStatus(String username, Long orderId, String statusStr);
 }

@@ -1,15 +1,27 @@
 package com.baemin_mini.service.impl;
 
+import com.baemin_mini.common.exception.BadRequestException;
 import com.baemin_mini.common.exception.NotFoundException;
+import com.baemin_mini.domain.entity.Order;
+import com.baemin_mini.domain.entity.OrderItem;
+import com.baemin_mini.domain.entity.OrderTracking;
 import com.baemin_mini.domain.entity.ShipperProfile;
 import com.baemin_mini.domain.entity.User;
+import com.baemin_mini.domain.enums.OrderStatus;
+import com.baemin_mini.domain.enums.PaymentMethod;
+import com.baemin_mini.domain.enums.PaymentStatus;
+import com.baemin_mini.domain.enums.RoleName;
 import com.baemin_mini.domain.enums.ShipperStatus;
+import com.baemin_mini.dto.order.OrderItemResponse;
+import com.baemin_mini.dto.order.OrderResponse;
 import com.baemin_mini.dto.shipper.ShipperLocationRequest;
 import com.baemin_mini.dto.shipper.ShipperProfileResponse;
+import com.baemin_mini.repository.OrderRepository;
 import com.baemin_mini.repository.ShipperProfileRepository;
 import com.baemin_mini.repository.UserRepository;
 import com.baemin_mini.service.ShipperProfileService;
 import java.time.LocalDateTime;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,21 +29,149 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class ShipperProfileServiceImpl implements ShipperProfileService {
+    private static final List<OrderStatus> ACTIVE_DELIVERY_STATUSES = List.of(OrderStatus.DELIVERING);
+
     private final UserRepository userRepository;
     private final ShipperProfileRepository shipperProfileRepository;
+    private final OrderRepository orderRepository;
+
+
+    @Override
+    @Transactional
+    public ShipperProfileResponse getProfile(String username) {
+        User user = getUser(username);
+        return toResponse(getOrCreateProfile(user));
+    }
 
     @Override
     @Transactional
     public ShipperProfileResponse updateLocation(String username, ShipperLocationRequest request) {
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new NotFoundException("User not found"));
-        ShipperProfile profile = shipperProfileRepository.findByUserId(user.getId())
-                .orElseGet(() -> createProfile(user));
+        User user = getUser(username);
+        ShipperProfile profile = getOrCreateProfile(user);
 
         profile.setCurrentLatitude(request.latitude());
         profile.setCurrentLongitude(request.longitude());
         profile.setLastLocationAt(LocalDateTime.now());
         return toResponse(shipperProfileRepository.save(profile));
+    }
+
+    @Override
+    @Transactional
+    public ShipperProfileResponse updateStatus(String username, ShipperStatus status) {
+        User user = getUser(username);
+        ShipperProfile profile = getOrCreateProfile(user);
+
+        if (status == ShipperStatus.BUSY) {
+            throw new BadRequestException("BUSY status is managed by delivery workflow");
+        }
+        if (status == ShipperStatus.OFFLINE && hasActiveDelivery(user.getId())) {
+            throw new BadRequestException("Cannot go offline while delivering an order");
+        }
+
+        profile.setCurrentStatus(status);
+        return toResponse(shipperProfileRepository.save(profile));
+    }
+
+    @Override
+    @Transactional
+    public List<OrderResponse> getAvailableOrders(String username) {
+        User user = getUser(username);
+        ShipperProfile profile = getOrCreateProfile(user);
+        if (profile.getCurrentStatus() == ShipperStatus.OFFLINE) {
+            throw new BadRequestException("Shipper is offline");
+        }
+        return orderRepository.findByStatusAndShipperIdIsNullOrderByCreatedAtAsc(OrderStatus.PREPARING)
+                .stream()
+                .map(this::toOrderResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderResponse> getMyActiveOrders(String username) {
+        User user = getUser(username);
+        return orderRepository.findByShipperIdAndStatusInOrderByCreatedAtDesc(user.getId(), ACTIVE_DELIVERY_STATUSES)
+                .stream()
+                .map(this::toOrderResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public OrderResponse startDelivery(String username, Long orderId) {
+        User user = getUser(username);
+        ShipperProfile profile = getOrCreateProfile(user);
+        if (profile.getCurrentStatus() != ShipperStatus.AVAILABLE) {
+            throw new BadRequestException("Shipper must be AVAILABLE to start delivery");
+        }
+        if (hasActiveDelivery(user.getId())) {
+            throw new BadRequestException("Shipper already has an active delivery");
+        }
+
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new NotFoundException("Order not found"));
+        if (order.getStatus() != OrderStatus.PREPARING || order.getShipperId() != null) {
+            throw new BadRequestException("Order is not available for delivery");
+        }
+
+        order.setShipperId(user.getId());
+        order.setStatus(OrderStatus.DELIVERING);
+        order.addTracking(OrderTracking.builder()
+                .status(OrderStatus.DELIVERING)
+                .actorRole(RoleName.SHIPPER.name())
+                .actorId(user.getId())
+                .note("Shipper started delivery")
+                .build());
+
+        profile.setCurrentStatus(ShipperStatus.BUSY);
+        shipperProfileRepository.save(profile);
+        return toOrderResponse(orderRepository.save(order));
+    }
+
+    @Override
+    @Transactional
+    public OrderResponse completeDelivery(String username, Long orderId) {
+        User user = getUser(username);
+        ShipperProfile profile = getOrCreateProfile(user);
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new NotFoundException("Order not found"));
+
+        if (!user.getId().equals(order.getShipperId())) {
+            throw new BadRequestException("This order is not assigned to current shipper");
+        }
+        if (order.getStatus() != OrderStatus.DELIVERING) {
+            throw new BadRequestException("Order is not being delivered");
+        }
+
+        order.setStatus(OrderStatus.DELIVERED);
+        if (order.getPaymentMethod() == PaymentMethod.COD) {
+            order.setPaymentStatus(PaymentStatus.PAID);
+        }
+        order.addTracking(OrderTracking.builder()
+                .status(OrderStatus.DELIVERED)
+                .actorRole(RoleName.SHIPPER.name())
+                .actorId(user.getId())
+                .note("Shipper completed delivery")
+                .build());
+
+        profile.setCurrentStatus(ShipperStatus.AVAILABLE);
+        shipperProfileRepository.save(profile);
+        return toOrderResponse(orderRepository.save(order));
+    }
+
+
+    private User getUser(String username) {
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new NotFoundException("User not found"));
+    }
+
+    private ShipperProfile getOrCreateProfile(User user) {
+        return shipperProfileRepository.findByUserId(user.getId())
+                .orElseGet(() -> shipperProfileRepository.save(createProfile(user)));
+    }
+
+    private boolean hasActiveDelivery(Long shipperId) {
+        return !orderRepository.findByShipperIdAndStatusInOrderByCreatedAtDesc(shipperId, ACTIVE_DELIVERY_STATUSES).isEmpty();
     }
 
     private ShipperProfile createProfile(User user) {
@@ -44,10 +184,39 @@ public class ShipperProfileServiceImpl implements ShipperProfileService {
     private ShipperProfileResponse toResponse(ShipperProfile profile) {
         return new ShipperProfileResponse(
                 profile.getId(),
-                profile.getVehicleNumber(),
                 profile.getCurrentStatus(),
                 profile.getCurrentLatitude(),
                 profile.getCurrentLongitude(),
                 profile.getLastLocationAt());
+    }
+
+    private OrderResponse toOrderResponse(Order order) {
+        return OrderResponse.builder()
+                .id(order.getId())
+                .restaurantId(order.getRestaurantId())
+                .customerId(order.getCustomerId())
+                .shipperId(order.getShipperId())
+                .voucherId(order.getVoucherId())
+                .status(order.getStatus())
+                .itemsTotal(order.getTotalAmount())
+                .discountAmount(order.getDiscountAmount())
+                .deliveryFee(order.getDeliveryFee())
+                .finalAmount(order.getFinalAmount())
+                .paymentMethod(order.getPaymentMethod())
+                .paymentStatus(order.getPaymentStatus())
+                .deliveryAddress(order.getDeliveryAddress())
+                .createdAt(order.getCreatedAt())
+                .items(order.getItems().stream().map(this::toOrderItemResponse).toList())
+                .build();
+    }
+
+    private OrderItemResponse toOrderItemResponse(OrderItem item) {
+        return OrderItemResponse.builder()
+                .id(item.getId())
+                .menuItemId(item.getMenuItemId())
+                .itemName(item.getItemNameSnapshot())
+                .quantity(item.getQuantity())
+                .unitPrice(item.getUnitPrice())
+                .build();
     }
 }

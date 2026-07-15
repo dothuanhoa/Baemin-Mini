@@ -24,9 +24,6 @@ public class ShipperProfile extends AuditableEntity {
     @JoinColumn(name = "user_id", nullable = false, unique = true)
     private User user;
 
-    @Column(name = "vehicle_number", length = 50)
-    private String vehicleNumber;
-
     @Enumerated(EnumType.STRING)
     @Column(name = "current_status", nullable = false, length = 20)
     private ShipperStatus currentStatus = ShipperStatus.AVAILABLE;

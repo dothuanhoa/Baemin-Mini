@@ -6,7 +6,6 @@ import java.time.LocalDateTime;
 
 public record ShipperProfileResponse(
         Long id,
-        String vehicleNumber,
         ShipperStatus currentStatus,
         BigDecimal currentLatitude,
         BigDecimal currentLongitude,

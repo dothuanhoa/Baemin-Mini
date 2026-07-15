@@ -1,4 +1,4 @@
-package com.baemin_mini.dto;
+package com.baemin_mini.dto.order;
 
 import com.baemin_mini.domain.enums.OrderStatus;
 import java.time.LocalDateTime;

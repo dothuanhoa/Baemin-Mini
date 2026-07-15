@@ -1,16 +1,18 @@
 package com.baemin_mini.controller;
 
 import com.baemin_mini.common.ApiResponse;
-import com.baemin_mini.dto.OrderFeeRequest;
-import com.baemin_mini.dto.OrderFeeResponse;
-import com.baemin_mini.dto.OrderRequest;
-import com.baemin_mini.dto.OrderResponse;
-import com.baemin_mini.dto.OrderTrackingResponse;
+import com.baemin_mini.dto.order.OrderFeeRequest;
+import com.baemin_mini.dto.order.OrderFeeResponse;
+import com.baemin_mini.dto.order.OrderRequest;
+import com.baemin_mini.dto.order.OrderResponse;
+import com.baemin_mini.dto.order.OrderTrackingResponse;
 import com.baemin_mini.service.OrderService;
 import jakarta.validation.Valid;
+import java.security.Principal;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,39 +30,47 @@ public class OrderController {
     private final OrderService orderService;
 
     @PostMapping("/orders/calculate-fee")
+    @PreAuthorize("hasRole('CUSTOMER')")
     public ResponseEntity<ApiResponse<OrderFeeResponse>> calculateFee(@Valid @RequestBody OrderFeeRequest request) {
         return ResponseEntity.ok(ApiResponse.success(orderService.calculateFee(request)));
     }
 
     @PostMapping("/orders")
-    public ResponseEntity<ApiResponse<OrderResponse>> createOrder(@Valid @RequestBody OrderRequest request) {
-        // Tạm thời hardcode customerId = 1L do chưa có module lấy ID từ Token của Customer
-        Long customerId = 1L;
-        return ResponseEntity.ok(ApiResponse.success(orderService.createOrder(customerId, request)));
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ResponseEntity<ApiResponse<OrderResponse>> createOrder(
+            Principal principal,
+            @Valid @RequestBody OrderRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(orderService.createOrder(principal.getName(), request)));
     }
 
     @GetMapping("/orders/my-orders")
-    public ResponseEntity<ApiResponse<List<OrderResponse>>> getMyOrders() {
-        Long customerId = 1L;
-        return ResponseEntity.ok(ApiResponse.success(orderService.getMyOrders(customerId)));
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ResponseEntity<ApiResponse<List<OrderResponse>>> getMyOrders(Principal principal) {
+        return ResponseEntity.ok(ApiResponse.success(orderService.getMyOrders(principal.getName())));
     }
 
     @GetMapping("/orders/{id}/tracking")
-    public ResponseEntity<ApiResponse<List<OrderTrackingResponse>>> getOrderTracking(@PathVariable Long id) {
-        return ResponseEntity.ok(ApiResponse.success(orderService.getOrderTracking(id)));
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'RESTAURANT', 'SHIPPER', 'ADMIN')")
+    public ResponseEntity<ApiResponse<List<OrderTrackingResponse>>> getOrderTracking(
+            Principal principal,
+            @PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(orderService.getOrderTracking(principal.getName(), id)));
     }
 
     @GetMapping("/restaurant/orders")
-    public ResponseEntity<ApiResponse<List<OrderResponse>>> getRestaurantOrders(@RequestParam Long restaurantId) {
-        // Tạm thời truyền parameter thay vì lấy từ Token của Owner
-        return ResponseEntity.ok(ApiResponse.success(orderService.getRestaurantOrders(restaurantId)));
+    @PreAuthorize("hasAnyRole('RESTAURANT', 'ADMIN')")
+    public ResponseEntity<ApiResponse<List<OrderResponse>>> getRestaurantOrders(
+            Principal principal,
+            @RequestParam Long restaurantId) {
+        return ResponseEntity.ok(ApiResponse.success(orderService.getRestaurantOrders(principal.getName(), restaurantId)));
     }
 
     @PutMapping("/orders/{id}/status")
+    @PreAuthorize("hasAnyRole('RESTAURANT', 'ADMIN')")
     public ResponseEntity<ApiResponse<OrderResponse>> updateOrderStatus(
-            @PathVariable Long id, 
+            Principal principal,
+            @PathVariable Long id,
             @RequestParam String status) {
-        // Tạm thời hardcode actor
-        return ResponseEntity.ok(ApiResponse.success(orderService.updateOrderStatus(id, status, 1L, "RESTAURANT_OWNER")));
+        return ResponseEntity.ok(ApiResponse.success(orderService.updateOrderStatus(principal.getName(), id, status)));
     }
 }

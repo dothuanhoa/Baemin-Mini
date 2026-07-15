@@ -1,4 +1,4 @@
-package com.baemin_mini.dto;
+package com.baemin_mini.dto.order;
 
 import com.baemin_mini.domain.enums.OrderStatus;
 import com.baemin_mini.domain.enums.PaymentMethod;
@@ -15,6 +15,8 @@ public class OrderResponse {
     private Long id;
     private Long restaurantId;
     private Long customerId;
+    private Long shipperId;
+    private Long voucherId;
     private OrderStatus status;
     private BigDecimal itemsTotal;
     private BigDecimal discountAmount;

@@ -1,4 +1,4 @@
-package com.baemin_mini.dto;
+package com.baemin_mini.dto.voucher;
 
 import com.baemin_mini.domain.enums.DiscountType;
 import java.math.BigDecimal;
@@ -17,4 +17,6 @@ public class VoucherResponse {
     private BigDecimal maxDiscount;
     private LocalDateTime startDate;
     private LocalDateTime endDate;
+    private Boolean isActive;
+    private Boolean isPublic;
 }

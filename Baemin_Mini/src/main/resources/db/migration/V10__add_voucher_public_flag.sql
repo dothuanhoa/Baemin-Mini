@@ -1,0 +1,2 @@
+ALTER TABLE vouchers
+    ADD COLUMN is_public BOOLEAN NOT NULL DEFAULT TRUE AFTER is_active;

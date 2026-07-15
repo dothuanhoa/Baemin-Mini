@@ -1,4 +1,4 @@
-package com.baemin_mini.dto;
+package com.baemin_mini.dto.voucher;
 
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;

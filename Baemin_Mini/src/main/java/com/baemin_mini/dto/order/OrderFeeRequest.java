@@ -1,4 +1,4 @@
-package com.baemin_mini.dto;
+package com.baemin_mini.dto.order;
 
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;

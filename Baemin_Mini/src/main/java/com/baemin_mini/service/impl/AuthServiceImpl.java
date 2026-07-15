@@ -18,6 +18,7 @@ import com.baemin_mini.repository.RefreshTokenRepository;
 import com.baemin_mini.repository.RoleRepository;
 import com.baemin_mini.repository.UserRepository;
 import com.baemin_mini.security.JwtService;
+import com.baemin_mini.service.AuthService;
 import io.jsonwebtoken.JwtException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -35,7 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-public class AuthServiceImpl implements com.baemin_mini.service.AuthService {
+public class AuthServiceImpl implements AuthService {
     private static final ZoneId SYSTEM_ZONE = ZoneId.systemDefault();
 
     private final UserRepository userRepository;

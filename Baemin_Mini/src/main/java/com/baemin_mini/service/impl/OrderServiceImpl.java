@@ -1,33 +1,38 @@
 package com.baemin_mini.service.impl;
 
 import com.baemin_mini.common.exception.BadRequestException;
+import com.baemin_mini.common.exception.ForbiddenException;
 import com.baemin_mini.common.exception.NotFoundException;
+import com.baemin_mini.domain.entity.MenuItem;
 import com.baemin_mini.domain.entity.Order;
 import com.baemin_mini.domain.entity.OrderItem;
 import com.baemin_mini.domain.entity.OrderTracking;
 import com.baemin_mini.domain.entity.Restaurant;
-import com.baemin_mini.domain.entity.MenuItem;
+import com.baemin_mini.domain.entity.User;
 import com.baemin_mini.domain.enums.OrderStatus;
 import com.baemin_mini.domain.enums.PaymentMethod;
 import com.baemin_mini.domain.enums.PaymentStatus;
-import com.baemin_mini.dto.OrderFeeRequest;
-import com.baemin_mini.dto.OrderFeeResponse;
-import com.baemin_mini.dto.OrderItemRequest;
-import com.baemin_mini.dto.OrderItemResponse;
-import com.baemin_mini.dto.OrderRequest;
-import com.baemin_mini.dto.OrderResponse;
-import com.baemin_mini.dto.OrderTrackingResponse;
-import com.baemin_mini.dto.VoucherApplyRequest;
-import com.baemin_mini.dto.VoucherApplyResponse;
+import com.baemin_mini.domain.enums.RoleName;
+import com.baemin_mini.dto.order.OrderFeeRequest;
+import com.baemin_mini.dto.order.OrderFeeResponse;
+import com.baemin_mini.dto.order.OrderItemRequest;
+import com.baemin_mini.dto.order.OrderItemResponse;
+import com.baemin_mini.dto.order.OrderRequest;
+import com.baemin_mini.dto.order.OrderResponse;
+import com.baemin_mini.dto.order.OrderTrackingResponse;
+import com.baemin_mini.dto.voucher.VoucherApplyRequest;
+import com.baemin_mini.dto.voucher.VoucherApplyResponse;
 import com.baemin_mini.repository.MenuItemRepository;
 import com.baemin_mini.repository.OrderRepository;
 import com.baemin_mini.repository.OrderTrackingRepository;
 import com.baemin_mini.repository.RestaurantRepository;
+import com.baemin_mini.repository.UserRepository;
 import com.baemin_mini.service.FeeService;
 import com.baemin_mini.service.OrderService;
 import com.baemin_mini.service.VoucherService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.EnumSet;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -37,10 +42,15 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class OrderServiceImpl implements OrderService {
 
+    private static final List<OrderStatus> RESTAURANT_VISIBLE_STATUSES = List.of(
+            OrderStatus.PLACED,
+            OrderStatus.PREPARING);
+
     private final OrderRepository orderRepository;
     private final OrderTrackingRepository orderTrackingRepository;
     private final RestaurantRepository restaurantRepository;
     private final MenuItemRepository menuItemRepository;
+    private final UserRepository userRepository;
     private final FeeService feeService;
     private final VoucherService voucherService;
 
@@ -65,7 +75,8 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public OrderResponse createOrder(Long customerId, OrderRequest request) {
+    public OrderResponse createOrder(String username, OrderRequest request) {
+        User customer = getCurrentUser(username);
         Restaurant restaurant = restaurantRepository.findById(request.getRestaurantId())
                 .orElseThrow(() -> new NotFoundException("Restaurant not found"));
 
@@ -73,13 +84,12 @@ public class OrderServiceImpl implements OrderService {
             throw new BadRequestException("Restaurant is currently closed");
         }
 
-        // Calculate items total and build order items
         BigDecimal itemsTotal = BigDecimal.ZERO;
         Order order = Order.builder()
-                .customerId(customerId)
+                .customerId(customer.getId())
                 .restaurantId(restaurant.getId())
-                .receiverName("Customer " + customerId) // Tạm thời dùng ID do chưa có bảng User Profile
-                .receiverPhone("0123456789")
+                .receiverName(customer.getFullName())
+                .receiverPhone(customer.getPhone() == null || customer.getPhone().isBlank() ? "N/A" : customer.getPhone())
                 .deliveryAddress(request.getDeliveryAddress())
                 .latitude(request.getLatitude())
                 .longitude(request.getLongitude())
@@ -93,7 +103,7 @@ public class OrderServiceImpl implements OrderService {
         for (OrderItemRequest itemReq : request.getItems()) {
             MenuItem menuItem = menuItemRepository.findById(itemReq.getMenuItemId())
                     .orElseThrow(() -> new NotFoundException("Menu item not found: " + itemReq.getMenuItemId()));
-            
+
             if (!menuItem.getRestaurant().getId().equals(restaurant.getId())) {
                 throw new BadRequestException("All items must be from the same restaurant");
             }
@@ -112,19 +122,18 @@ public class OrderServiceImpl implements OrderService {
 
         order.setTotalAmount(itemsTotal);
 
-        // Calculate Discount
         BigDecimal discountAmount = BigDecimal.ZERO;
         if (request.getVoucherCode() != null && !request.getVoucherCode().isBlank()) {
-            VoucherApplyRequest vReq = new VoucherApplyRequest();
-            vReq.setCode(request.getVoucherCode());
-            vReq.setItemsTotal(itemsTotal);
-            
-            VoucherApplyResponse vRes = voucherService.applyVoucher(vReq);
-            discountAmount = vRes.getDiscountAmount();
+            VoucherApplyRequest voucherRequest = new VoucherApplyRequest();
+            voucherRequest.setCode(request.getVoucherCode());
+            voucherRequest.setItemsTotal(itemsTotal);
+
+            VoucherApplyResponse voucherResponse = voucherService.applyVoucher(voucherRequest);
+            discountAmount = voucherResponse.getDiscountAmount();
+            order.setVoucherId(voucherResponse.getVoucherId());
         }
         order.setDiscountAmount(discountAmount);
 
-        // Calculate Delivery Fee
         BigDecimal distanceKm = feeService.calculateDistanceKm(
                 restaurant.getLatitude(), restaurant.getLongitude(),
                 request.getLatitude(), request.getLongitude()
@@ -132,52 +141,57 @@ public class OrderServiceImpl implements OrderService {
         BigDecimal deliveryFee = feeService.calculateDeliveryFee(distanceKm, itemsTotal);
         order.setDeliveryFee(deliveryFee);
 
-        // Calculate Final Amount
         BigDecimal amountAfterDiscount = itemsTotal.subtract(discountAmount);
         if (amountAfterDiscount.compareTo(BigDecimal.ZERO) < 0) {
             amountAfterDiscount = BigDecimal.ZERO;
         }
-        BigDecimal finalAmount = amountAfterDiscount.add(deliveryFee);
-        order.setFinalAmount(finalAmount);
+        order.setFinalAmount(amountAfterDiscount.add(deliveryFee));
 
-        // Calculate Platform Fee & Shipper Earning
         BigDecimal platformFee = amountAfterDiscount.multiply(restaurant.getCommissionRate())
                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
         order.setPlatformFee(platformFee);
         order.setShipperEarning(deliveryFee);
 
-        Order savedOrder = orderRepository.save(order);
-
-        // Add Tracking
         OrderTracking tracking = OrderTracking.builder()
                 .status(OrderStatus.PLACED)
-                .actorRole("CUSTOMER")
-                .actorId(customerId)
-                .note("Khách hàng đặt đơn")
+                .actorRole(RoleName.CUSTOMER.name())
+                .actorId(customer.getId())
+                .note("Customer placed order")
                 .build();
-        savedOrder.addTracking(tracking);
-        // Note: tracking is cascade saved via order
+        order.addTracking(tracking);
 
-        return mapToResponse(savedOrder);
+        return mapToResponse(orderRepository.save(order));
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<OrderResponse> getMyOrders(Long customerId) {
-        return orderRepository.findByCustomerId(customerId)
+    public List<OrderResponse> getMyOrders(String username) {
+        User customer = getCurrentUser(username);
+        return orderRepository.findByCustomerIdOrderByCreatedAtDesc(customer.getId())
                 .stream().map(this::mapToResponse).toList();
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<OrderResponse> getRestaurantOrders(Long restaurantId) {
-        return orderRepository.findByRestaurantId(restaurantId)
+    public List<OrderResponse> getRestaurantOrders(String username, Long restaurantId) {
+        User actor = getCurrentUser(username);
+        Restaurant restaurant = restaurantRepository.findById(restaurantId)
+                .orElseThrow(() -> new NotFoundException("Restaurant not found"));
+        if (!hasRole(actor, RoleName.ADMIN) && !restaurant.getOwner().getId().equals(actor.getId())) {
+            throw new ForbiddenException("You do not have permission to view this restaurant orders");
+        }
+        return orderRepository.findByRestaurantIdAndStatusInOrderByCreatedAtDesc(restaurantId, RESTAURANT_VISIBLE_STATUSES)
                 .stream().map(this::mapToResponse).toList();
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<OrderTrackingResponse> getOrderTracking(Long orderId) {
+    public List<OrderTrackingResponse> getOrderTracking(String username, Long orderId) {
+        User actor = getCurrentUser(username);
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new NotFoundException("Order not found"));
+        assertCanViewOrder(actor, order);
+
         return orderTrackingRepository.findByOrderIdOrderByCreatedAtAsc(orderId)
                 .stream().map(t -> OrderTrackingResponse.builder()
                         .status(t.getStatus())
@@ -189,29 +203,127 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public OrderResponse updateOrderStatus(Long orderId, String statusStr, Long actorId, String actorRole) {
+    public OrderResponse updateOrderStatus(String username, Long orderId, String statusStr) {
+        User actor = getCurrentUser(username);
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new NotFoundException("Order not found"));
-        
-        OrderStatus newStatus;
-        try {
-            newStatus = OrderStatus.valueOf(statusStr.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new BadRequestException("Invalid order status");
+
+        OrderStatus newStatus = parseStatus(statusStr);
+        assertCanUpdateStatus(actor, order, newStatus);
+        assertValidTransition(order.getStatus(), newStatus);
+
+        if (newStatus == OrderStatus.DELIVERING && order.getShipperId() == null && hasRole(actor, RoleName.SHIPPER)) {
+            order.setShipperId(actor.getId());
+        }
+        if (newStatus == OrderStatus.DELIVERED && order.getPaymentMethod() == PaymentMethod.COD) {
+            order.setPaymentStatus(PaymentStatus.PAID);
+        }
+        if (newStatus == OrderStatus.CANCELLED) {
+            order.setPaymentStatus(PaymentStatus.CANCELLED);
         }
 
         order.setStatus(newStatus);
-        
+
         OrderTracking tracking = OrderTracking.builder()
                 .status(newStatus)
-                .actorRole(actorRole)
-                .actorId(actorId)
-                .note("Cập nhật trạng thái thành " + newStatus)
+                .actorRole(primaryRole(actor).name())
+                .actorId(actor.getId())
+                .note("Order status changed to " + newStatus)
                 .build();
         order.addTracking(tracking);
 
-        Order savedOrder = orderRepository.save(order);
-        return mapToResponse(savedOrder);
+        return mapToResponse(orderRepository.save(order));
+    }
+
+    private User getCurrentUser(String username) {
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new NotFoundException("User not found"));
+    }
+
+    private OrderStatus parseStatus(String statusStr) {
+        try {
+            return OrderStatus.valueOf(statusStr.toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new BadRequestException("Invalid order status");
+        }
+    }
+
+    private void assertCanViewOrder(User actor, Order order) {
+        if (hasRole(actor, RoleName.ADMIN)) {
+            return;
+        }
+        if (hasRole(actor, RoleName.CUSTOMER) && order.getCustomerId().equals(actor.getId())) {
+            return;
+        }
+        if (hasRole(actor, RoleName.RESTAURANT) && ownsRestaurant(actor, order.getRestaurantId())) {
+            return;
+        }
+        if (hasRole(actor, RoleName.SHIPPER) && actor.getId().equals(order.getShipperId())) {
+            return;
+        }
+        throw new ForbiddenException("You do not have permission to view this order");
+    }
+
+    private void assertCanUpdateStatus(User actor, Order order, OrderStatus newStatus) {
+        if (hasRole(actor, RoleName.ADMIN)) {
+            return;
+        }
+        if (hasRole(actor, RoleName.RESTAURANT)) {
+            if (!ownsRestaurant(actor, order.getRestaurantId())) {
+                throw new ForbiddenException("You do not have permission to update this order");
+            }
+            if (EnumSet.of(OrderStatus.PREPARING, OrderStatus.CANCELLED).contains(newStatus)) {
+                return;
+            }
+        }
+        if (hasRole(actor, RoleName.SHIPPER)) {
+            boolean canClaimOrder = newStatus == OrderStatus.DELIVERING && order.getShipperId() == null;
+            boolean canUpdateOwnOrder = actor.getId().equals(order.getShipperId())
+                    && EnumSet.of(OrderStatus.DELIVERING, OrderStatus.DELIVERED).contains(newStatus);
+            if (canClaimOrder || canUpdateOwnOrder) {
+                return;
+            }
+        }
+        throw new ForbiddenException("You do not have permission to update this order status");
+    }
+
+    private void assertValidTransition(OrderStatus currentStatus, OrderStatus newStatus) {
+        if (currentStatus == newStatus) {
+            return;
+        }
+        boolean valid = switch (currentStatus) {
+            case PLACED -> newStatus == OrderStatus.PREPARING || newStatus == OrderStatus.CANCELLED;
+            case PREPARING -> newStatus == OrderStatus.DELIVERING || newStatus == OrderStatus.CANCELLED;
+            case DELIVERING -> newStatus == OrderStatus.DELIVERED;
+            case DELIVERED, CANCELLED -> false;
+        };
+        if (!valid) {
+            throw new BadRequestException("Invalid order status transition");
+        }
+    }
+
+    private boolean ownsRestaurant(User actor, Long restaurantId) {
+        return restaurantRepository.findById(restaurantId)
+                .map(restaurant -> restaurant.getOwner().getId().equals(actor.getId()))
+                .orElse(false);
+    }
+
+    private boolean hasRole(User user, RoleName roleName) {
+        return user.getUserRoles().stream()
+                .anyMatch(userRole -> userRole.getRole().getName() == roleName);
+    }
+
+    private RoleName primaryRole(User user) {
+        if (hasRole(user, RoleName.ADMIN)) {
+            return RoleName.ADMIN;
+        }
+        if (hasRole(user, RoleName.RESTAURANT)) {
+            return RoleName.RESTAURANT;
+        }
+        if (hasRole(user, RoleName.SHIPPER)) {
+            return RoleName.SHIPPER;
+        }
+        return RoleName.CUSTOMER;
     }
 
     private OrderResponse mapToResponse(Order order) {
@@ -219,6 +331,8 @@ public class OrderServiceImpl implements OrderService {
                 .id(order.getId())
                 .restaurantId(order.getRestaurantId())
                 .customerId(order.getCustomerId())
+                .shipperId(order.getShipperId())
+                .voucherId(order.getVoucherId())
                 .status(order.getStatus())
                 .itemsTotal(order.getTotalAmount())
                 .discountAmount(order.getDiscountAmount())
