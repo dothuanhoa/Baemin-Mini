@@ -6,6 +6,8 @@ import com.baemin_mini.domain.entity.Area;
 import com.baemin_mini.domain.entity.Category;
 import com.baemin_mini.domain.entity.MenuItem;
 import com.baemin_mini.domain.entity.Restaurant;
+import com.baemin_mini.domain.entity.User;
+import com.baemin_mini.domain.enums.RoleName;
 import com.baemin_mini.dto.catalog.AreaResponse;
 import com.baemin_mini.dto.catalog.CategoryResponse;
 import com.baemin_mini.dto.catalog.MenuItemRequest;
@@ -15,6 +17,7 @@ import com.baemin_mini.repository.AreaRepository;
 import com.baemin_mini.repository.CategoryRepository;
 import com.baemin_mini.repository.MenuItemRepository;
 import com.baemin_mini.repository.RestaurantRepository;
+import com.baemin_mini.repository.UserRepository;
 import com.baemin_mini.service.CatalogService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +32,7 @@ public class CatalogServiceImpl implements CatalogService {
     private final MenuItemRepository menuItemRepository;
     private final CategoryRepository categoryRepository;
     private final AreaRepository areaRepository;
+    private final UserRepository userRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -124,9 +128,19 @@ public class CatalogServiceImpl implements CatalogService {
     }
 
     private void checkOwnership(Restaurant restaurant, String username) {
-        if (!restaurant.getOwner().getUsername().equals(username)) {
+        User actor = userRepository.findByUsername(username)
+                .orElseThrow(() -> new NotFoundException("User not found"));
+        if (hasRole(actor, RoleName.ADMIN)) {
+            return;
+        }
+        if (!restaurant.getOwner().getId().equals(actor.getId())) {
             throw new ForbiddenException("You do not have permission to manage this restaurant");
         }
+    }
+
+    private boolean hasRole(User user, RoleName roleName) {
+        return user.getUserRoles().stream()
+                .anyMatch(userRole -> userRole.getRole().getName() == roleName);
     }
 
     private RestaurantResponse toRestaurantResponse(Restaurant r) {

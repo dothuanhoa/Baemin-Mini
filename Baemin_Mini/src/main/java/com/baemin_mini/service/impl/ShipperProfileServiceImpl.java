@@ -22,6 +22,7 @@ import com.baemin_mini.repository.DeliveryAssignmentRepository;
 import com.baemin_mini.repository.OrderRepository;
 import com.baemin_mini.repository.ShipperProfileRepository;
 import com.baemin_mini.repository.UserRepository;
+import com.baemin_mini.service.DeliveryDispatchService;
 import com.baemin_mini.service.ShipperProfileService;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -40,6 +41,7 @@ public class ShipperProfileServiceImpl implements ShipperProfileService {
     private final ShipperProfileRepository shipperProfileRepository;
     private final OrderRepository orderRepository;
     private final DeliveryAssignmentRepository deliveryAssignmentRepository;
+    private final DeliveryDispatchService deliveryDispatchService;
 
 
     @Override
@@ -58,7 +60,9 @@ public class ShipperProfileServiceImpl implements ShipperProfileService {
         profile.setCurrentLatitude(request.latitude());
         profile.setCurrentLongitude(request.longitude());
         profile.setLastLocationAt(LocalDateTime.now());
-        return toResponse(shipperProfileRepository.save(profile));
+        ShipperProfile savedProfile = shipperProfileRepository.save(profile);
+        dispatchWaitingOrdersIfReady(username, savedProfile);
+        return toResponse(savedProfile);
     }
 
     @Override
@@ -75,7 +79,9 @@ public class ShipperProfileServiceImpl implements ShipperProfileService {
         }
 
         profile.setCurrentStatus(status);
-        return toResponse(shipperProfileRepository.save(profile));
+        ShipperProfile savedProfile = shipperProfileRepository.save(profile);
+        dispatchWaitingOrdersIfReady(username, savedProfile);
+        return toResponse(savedProfile);
     }
     @Override
     @Transactional(readOnly = true)
@@ -160,6 +166,19 @@ public class ShipperProfileServiceImpl implements ShipperProfileService {
 
     private boolean hasActiveDelivery(Long shipperId) {
         return !orderRepository.findByShipperIdAndStatusInOrderByCreatedAtDesc(shipperId, ACTIVE_DELIVERY_STATUSES).isEmpty();
+    }
+
+    private void dispatchWaitingOrdersIfReady(String username, ShipperProfile profile) {
+        if (profile.getCurrentStatus() == ShipperStatus.AVAILABLE && hasFreshLocation(profile)) {
+            deliveryDispatchService.dispatchWaitingOrdersToShipper(username);
+        }
+    }
+
+    private boolean hasFreshLocation(ShipperProfile profile) {
+        return profile.getCurrentLatitude() != null
+                && profile.getCurrentLongitude() != null
+                && profile.getLastLocationAt() != null
+                && !profile.getLastLocationAt().isBefore(LocalDateTime.now().minusMinutes(30));
     }
 
     private ShipperProfile createProfile(User user) {

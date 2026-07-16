@@ -11,6 +11,7 @@ import com.baemin_mini.domain.entity.User;
 import com.baemin_mini.domain.enums.DeliveryAssignmentStatus;
 import com.baemin_mini.domain.enums.OrderStatus;
 import com.baemin_mini.domain.enums.ShipperStatus;
+import com.baemin_mini.domain.event.OrderWaitingForShipperEvent;
 import com.baemin_mini.dto.order.OrderItemResponse;
 import com.baemin_mini.dto.order.OrderResponse;
 import com.baemin_mini.dto.shipper.NearbyOrderResponse;
@@ -27,6 +28,7 @@ import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,6 +53,7 @@ public class DeliveryAssignmentServiceImpl implements DeliveryAssignmentService 
     private final ShipperProfileRepository shipperProfileRepository;
     private final DeliveryAssignmentRepository deliveryAssignmentRepository;
     private final FeeService feeService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
@@ -142,7 +145,9 @@ public class DeliveryAssignmentServiceImpl implements DeliveryAssignmentService 
 
         deliveryAssignmentRepository.save(assignment);
         shipperProfileRepository.save(profile);
-        return toOrderResponse(orderRepository.save(order));
+        Order savedOrder = orderRepository.save(order);
+        eventPublisher.publishEvent(new OrderWaitingForShipperEvent(savedOrder.getId()));
+        return toOrderResponse(savedOrder);
     }
 
     @Override

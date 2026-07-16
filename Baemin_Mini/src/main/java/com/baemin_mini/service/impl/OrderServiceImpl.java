@@ -111,6 +111,9 @@ public class OrderServiceImpl implements OrderService {
             if (!menuItem.getRestaurant().getId().equals(restaurant.getId())) {
                 throw new BadRequestException("All items must be from the same restaurant");
             }
+            if (!Boolean.TRUE.equals(menuItem.getIsAvailable())) {
+                throw new BadRequestException("Menu item is not available: " + menuItem.getId());
+            }
 
             BigDecimal lineTotal = menuItem.getPrice().multiply(BigDecimal.valueOf(itemReq.getQuantity()));
             itemsTotal = itemsTotal.add(lineTotal);
