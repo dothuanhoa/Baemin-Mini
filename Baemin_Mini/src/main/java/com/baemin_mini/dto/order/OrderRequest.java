@@ -28,6 +28,5 @@ public class OrderRequest {
     private String shipperNote;
 
     @NotEmpty(message = "Order items cannot be empty")
-    @Valid
-    private List<OrderItemRequest> items;
+    private List<@Valid OrderItemRequest> items;
 }
