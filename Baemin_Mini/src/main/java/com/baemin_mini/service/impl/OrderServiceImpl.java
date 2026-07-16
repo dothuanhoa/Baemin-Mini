@@ -27,8 +27,10 @@ import com.baemin_mini.repository.OrderRepository;
 import com.baemin_mini.repository.OrderTrackingRepository;
 import com.baemin_mini.repository.RestaurantRepository;
 import com.baemin_mini.repository.UserRepository;
+import com.baemin_mini.service.DeliveryDispatchService;
 import com.baemin_mini.service.FeeService;
 import com.baemin_mini.service.OrderService;
+import com.baemin_mini.service.SseService;
 import com.baemin_mini.service.VoucherService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -53,6 +55,8 @@ public class OrderServiceImpl implements OrderService {
     private final UserRepository userRepository;
     private final FeeService feeService;
     private final VoucherService voucherService;
+    private final SseService sseService;
+    private final DeliveryDispatchService deliveryDispatchService;
 
     @Override
     @Transactional(readOnly = true)
@@ -160,7 +164,15 @@ public class OrderServiceImpl implements OrderService {
                 .build();
         order.addTracking(tracking);
 
-        return mapToResponse(orderRepository.save(order));
+        Order savedOrder = orderRepository.save(order);
+
+        // Notify Restaurant via SSE
+        sseService.notifyRestaurant(restaurant.getId(), "NEW_ORDER", "You have a new order: " + savedOrder.getId());
+        
+        // Broadcast to nearby available shippers
+        deliveryDispatchService.dispatchOrderToNearbyShippers(savedOrder.getId());
+
+        return mapToResponse(savedOrder);
     }
 
     @Override

@@ -2,6 +2,7 @@ package com.baemin_mini.repository;
 
 import com.baemin_mini.domain.entity.Order;
 import com.baemin_mini.domain.enums.OrderStatus;
+import java.math.BigDecimal;
 import jakarta.persistence.LockModeType;
 import java.util.Collection;
 import java.util.List;
@@ -28,6 +29,13 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             Long shipperId,
             Collection<OrderStatus> statuses);
 
+    long countByStatus(OrderStatus status);
+
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.shipperId IS NULL AND o.status IN :statuses")
+    long countByShipperIdIsNullAndStatusIn(@Param("statuses") Collection<OrderStatus> statuses);
+
+    @Query("SELECT COALESCE(SUM(o.platformFee), 0) FROM Order o WHERE o.status = :status")
+    BigDecimal sumPlatformFeeByStatus(@Param("status") OrderStatus status);
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select o from Order o where o.id = :id")
     Optional<Order> findByIdForUpdate(@Param("id") Long id);

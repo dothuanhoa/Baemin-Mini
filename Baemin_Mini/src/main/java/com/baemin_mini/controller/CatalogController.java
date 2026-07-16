@@ -28,8 +28,6 @@ public class CatalogController {
 
     private final CatalogService catalogService;
 
-    // --- PUBLIC APIS ---
-
     @GetMapping("/restaurants/nearby")
     public ApiResponse<List<RestaurantResponse>> getNearbyRestaurants(@RequestParam(required = false) Long areaId) {
         return ApiResponse.success("Restaurants fetched successfully", catalogService.getNearbyRestaurants(areaId));
@@ -45,7 +43,6 @@ public class CatalogController {
         return ApiResponse.success("Menu fetched successfully", catalogService.getMenuItemsByRestaurant(id));
     }
 
-    // --- RESTAURANT / ADMIN APIS ---
 
     @PostMapping("/restaurants/{restaurantId}/menu")
     @PreAuthorize("hasAnyRole('RESTAURANT', 'ADMIN')")
