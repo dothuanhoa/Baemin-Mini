@@ -223,10 +223,6 @@ public class OrderServiceImpl implements OrderService {
         OrderStatus newStatus = parseStatus(statusStr);
         assertCanUpdateStatus(actor, order, newStatus);
         assertValidTransition(order.getStatus(), newStatus);
-
-        if (newStatus == OrderStatus.DELIVERING && order.getShipperId() == null && hasRole(actor, RoleName.SHIPPER)) {
-            order.setShipperId(actor.getId());
-        }
         if (newStatus == OrderStatus.DELIVERED && order.getPaymentMethod() == PaymentMethod.COD) {
             order.setPaymentStatus(PaymentStatus.PAID);
         }
@@ -285,14 +281,6 @@ public class OrderServiceImpl implements OrderService {
                 throw new ForbiddenException("You do not have permission to update this order");
             }
             if (EnumSet.of(OrderStatus.PREPARING, OrderStatus.CANCELLED).contains(newStatus)) {
-                return;
-            }
-        }
-        if (hasRole(actor, RoleName.SHIPPER)) {
-            boolean canClaimOrder = newStatus == OrderStatus.DELIVERING && order.getShipperId() == null;
-            boolean canUpdateOwnOrder = actor.getId().equals(order.getShipperId())
-                    && EnumSet.of(OrderStatus.DELIVERING, OrderStatus.DELIVERED).contains(newStatus);
-            if (canClaimOrder || canUpdateOwnOrder) {
                 return;
             }
         }

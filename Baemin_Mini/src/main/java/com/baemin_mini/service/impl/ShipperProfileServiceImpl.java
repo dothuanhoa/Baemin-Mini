@@ -36,10 +36,6 @@ public class ShipperProfileServiceImpl implements ShipperProfileService {
             OrderStatus.PLACED,
             OrderStatus.PREPARING,
             OrderStatus.DELIVERING);
-    private static final List<OrderStatus> LEGACY_AVAILABLE_ORDER_STATUSES = List.of(
-            OrderStatus.PLACED,
-            OrderStatus.PREPARING);
-
     private final UserRepository userRepository;
     private final ShipperProfileRepository shipperProfileRepository;
     private final OrderRepository orderRepository;
@@ -81,21 +77,6 @@ public class ShipperProfileServiceImpl implements ShipperProfileService {
         profile.setCurrentStatus(status);
         return toResponse(shipperProfileRepository.save(profile));
     }
-
-    @Override
-    @Transactional
-    public List<OrderResponse> getAvailableOrders(String username) {
-        User user = getUser(username);
-        ShipperProfile profile = getOrCreateProfile(user);
-        if (profile.getCurrentStatus() == ShipperStatus.OFFLINE) {
-            throw new BadRequestException("Shipper is offline");
-        }
-        return orderRepository.findByStatusInAndShipperIdIsNullOrderByCreatedAtAsc(LEGACY_AVAILABLE_ORDER_STATUSES)
-                .stream()
-                .map(this::toOrderResponse)
-                .toList();
-    }
-
     @Override
     @Transactional(readOnly = true)
     public List<OrderResponse> getMyActiveOrders(String username) {

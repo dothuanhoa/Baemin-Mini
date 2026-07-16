@@ -13,7 +13,6 @@ public interface ShipperProfileService {
 
     ShipperProfileResponse updateStatus(String username, ShipperStatus status);
 
-    List<OrderResponse> getAvailableOrders(String username);
 
     List<OrderResponse> getMyActiveOrders(String username);
 
