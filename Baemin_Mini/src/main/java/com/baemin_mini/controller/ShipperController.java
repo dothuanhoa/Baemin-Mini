@@ -3,8 +3,11 @@ package com.baemin_mini.controller;
 import com.baemin_mini.common.ApiResponse;
 import com.baemin_mini.domain.enums.ShipperStatus;
 import com.baemin_mini.dto.order.OrderResponse;
+import com.baemin_mini.dto.shipper.NearbyOrderResponse;
+import com.baemin_mini.dto.shipper.ShipperCancelOrderRequest;
 import com.baemin_mini.dto.shipper.ShipperLocationRequest;
 import com.baemin_mini.dto.shipper.ShipperProfileResponse;
+import com.baemin_mini.service.DeliveryAssignmentService;
 import com.baemin_mini.service.ShipperProfileService;
 import jakarta.validation.Valid;
 import java.security.Principal;
@@ -13,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -24,6 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class ShipperController {
     private final ShipperProfileService shipperProfileService;
+    private final DeliveryAssignmentService deliveryAssignmentService;
 
     @PreAuthorize("hasRole('SHIPPER')")
     @GetMapping("/profile")
@@ -46,6 +51,29 @@ public class ShipperController {
             Principal principal,
             @RequestParam ShipperStatus status) {
         return ApiResponse.success("Shipper status updated", shipperProfileService.updateStatus(principal.getName(), status));
+    }
+
+    @PreAuthorize("hasRole('SHIPPER')")
+    @GetMapping("/orders/nearby")
+    public ApiResponse<List<NearbyOrderResponse>> getNearbyOrders(Principal principal) {
+        return ApiResponse.success("Nearby orders fetched", deliveryAssignmentService.getNearbyOrders(principal.getName()));
+    }
+
+    @PreAuthorize("hasRole('SHIPPER')")
+    @PostMapping("/orders/{id}/accept")
+    public ApiResponse<OrderResponse> acceptOrder(
+            Principal principal,
+            @PathVariable Long id) {
+        return ApiResponse.success("Order accepted", deliveryAssignmentService.acceptOrder(principal.getName(), id));
+    }
+
+    @PreAuthorize("hasRole('SHIPPER')")
+    @PostMapping("/orders/{id}/cancel")
+    public ApiResponse<OrderResponse> cancelOrder(
+            Principal principal,
+            @PathVariable Long id,
+            @Valid @RequestBody ShipperCancelOrderRequest request) {
+        return ApiResponse.success("Order cancelled by shipper", deliveryAssignmentService.cancelOrder(principal.getName(), id, request));
     }
 
     @PreAuthorize("hasRole('SHIPPER')")
