@@ -2,11 +2,13 @@ package com.baemin_mini.service.impl;
 
 import com.baemin_mini.common.exception.BadRequestException;
 import com.baemin_mini.common.exception.NotFoundException;
+import com.baemin_mini.domain.entity.DeliveryAssignment;
 import com.baemin_mini.domain.entity.Order;
 import com.baemin_mini.domain.entity.OrderItem;
 import com.baemin_mini.domain.entity.OrderTracking;
 import com.baemin_mini.domain.entity.ShipperProfile;
 import com.baemin_mini.domain.entity.User;
+import com.baemin_mini.domain.enums.DeliveryAssignmentStatus;
 import com.baemin_mini.domain.enums.OrderStatus;
 import com.baemin_mini.domain.enums.PaymentMethod;
 import com.baemin_mini.domain.enums.PaymentStatus;
@@ -16,6 +18,7 @@ import com.baemin_mini.dto.order.OrderItemResponse;
 import com.baemin_mini.dto.order.OrderResponse;
 import com.baemin_mini.dto.shipper.ShipperLocationRequest;
 import com.baemin_mini.dto.shipper.ShipperProfileResponse;
+import com.baemin_mini.repository.DeliveryAssignmentRepository;
 import com.baemin_mini.repository.OrderRepository;
 import com.baemin_mini.repository.ShipperProfileRepository;
 import com.baemin_mini.repository.UserRepository;
@@ -29,11 +32,18 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class ShipperProfileServiceImpl implements ShipperProfileService {
-    private static final List<OrderStatus> ACTIVE_DELIVERY_STATUSES = List.of(OrderStatus.DELIVERING);
+    private static final List<OrderStatus> ACTIVE_DELIVERY_STATUSES = List.of(
+            OrderStatus.PLACED,
+            OrderStatus.PREPARING,
+            OrderStatus.DELIVERING);
+    private static final List<OrderStatus> LEGACY_AVAILABLE_ORDER_STATUSES = List.of(
+            OrderStatus.PLACED,
+            OrderStatus.PREPARING);
 
     private final UserRepository userRepository;
     private final ShipperProfileRepository shipperProfileRepository;
     private final OrderRepository orderRepository;
+    private final DeliveryAssignmentRepository deliveryAssignmentRepository;
 
 
     @Override
@@ -65,7 +75,7 @@ public class ShipperProfileServiceImpl implements ShipperProfileService {
             throw new BadRequestException("BUSY status is managed by delivery workflow");
         }
         if (status == ShipperStatus.OFFLINE && hasActiveDelivery(user.getId())) {
-            throw new BadRequestException("Cannot go offline while delivering an order");
+            throw new BadRequestException("Cannot go offline while having an active order");
         }
 
         profile.setCurrentStatus(status);
@@ -80,7 +90,7 @@ public class ShipperProfileServiceImpl implements ShipperProfileService {
         if (profile.getCurrentStatus() == ShipperStatus.OFFLINE) {
             throw new BadRequestException("Shipper is offline");
         }
-        return orderRepository.findByStatusAndShipperIdIsNullOrderByCreatedAtAsc(OrderStatus.PREPARING)
+        return orderRepository.findByStatusInAndShipperIdIsNullOrderByCreatedAtAsc(LEGACY_AVAILABLE_ORDER_STATUSES)
                 .stream()
                 .map(this::toOrderResponse)
                 .toList();
@@ -101,20 +111,16 @@ public class ShipperProfileServiceImpl implements ShipperProfileService {
     public OrderResponse startDelivery(String username, Long orderId) {
         User user = getUser(username);
         ShipperProfile profile = getOrCreateProfile(user);
-        if (profile.getCurrentStatus() != ShipperStatus.AVAILABLE) {
-            throw new BadRequestException("Shipper must be AVAILABLE to start delivery");
-        }
-        if (hasActiveDelivery(user.getId())) {
-            throw new BadRequestException("Shipper already has an active delivery");
-        }
-
-        Order order = orderRepository.findById(orderId)
+        Order order = orderRepository.findByIdForUpdate(orderId)
                 .orElseThrow(() -> new NotFoundException("Order not found"));
-        if (order.getStatus() != OrderStatus.PREPARING || order.getShipperId() != null) {
-            throw new BadRequestException("Order is not available for delivery");
+
+        if (!user.getId().equals(order.getShipperId())) {
+            throw new BadRequestException("This order is not assigned to current shipper");
+        }
+        if (order.getStatus() != OrderStatus.PREPARING) {
+            throw new BadRequestException("Order must be PREPARING before delivery starts");
         }
 
-        order.setShipperId(user.getId());
         order.setStatus(OrderStatus.DELIVERING);
         order.addTracking(OrderTracking.builder()
                 .status(OrderStatus.DELIVERING)
@@ -133,7 +139,7 @@ public class ShipperProfileServiceImpl implements ShipperProfileService {
     public OrderResponse completeDelivery(String username, Long orderId) {
         User user = getUser(username);
         ShipperProfile profile = getOrCreateProfile(user);
-        Order order = orderRepository.findById(orderId)
+        Order order = orderRepository.findByIdForUpdate(orderId)
                 .orElseThrow(() -> new NotFoundException("Order not found"));
 
         if (!user.getId().equals(order.getShipperId())) {
@@ -154,6 +160,7 @@ public class ShipperProfileServiceImpl implements ShipperProfileService {
                 .note("Shipper completed delivery")
                 .build());
 
+        completeAcceptedAssignment(order.getId(), user.getId());
         profile.setCurrentStatus(ShipperStatus.AVAILABLE);
         shipperProfileRepository.save(profile);
         return toOrderResponse(orderRepository.save(order));
@@ -179,6 +186,16 @@ public class ShipperProfileServiceImpl implements ShipperProfileService {
         profile.setUser(user);
         profile.setCurrentStatus(ShipperStatus.AVAILABLE);
         return profile;
+    }
+
+    private void completeAcceptedAssignment(Long orderId, Long shipperId) {
+        DeliveryAssignment assignment = deliveryAssignmentRepository
+                .findFirstByOrder_IdAndShipper_IdAndStatusOrderByCreatedAtDesc(
+                        orderId, shipperId, DeliveryAssignmentStatus.ACCEPTED)
+                .orElseThrow(() -> new BadRequestException("Accepted assignment not found"));
+        assignment.setStatus(DeliveryAssignmentStatus.COMPLETED);
+        assignment.setCompletedAt(LocalDateTime.now());
+        deliveryAssignmentRepository.save(assignment);
     }
 
     private ShipperProfileResponse toResponse(ShipperProfile profile) {
