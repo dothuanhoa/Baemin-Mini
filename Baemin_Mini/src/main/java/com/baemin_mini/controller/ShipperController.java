@@ -75,13 +75,6 @@ public class ShipperController {
             @Valid @RequestBody ShipperCancelOrderRequest request) {
         return ApiResponse.success("Order cancelled by shipper", deliveryAssignmentService.cancelOrder(principal.getName(), id, request));
     }
-
-    @PreAuthorize("hasRole('SHIPPER')")
-    @GetMapping("/orders/available")
-    public ApiResponse<List<OrderResponse>> getAvailableOrders(Principal principal) {
-        return ApiResponse.success("Available orders fetched", shipperProfileService.getAvailableOrders(principal.getName()));
-    }
-
     @PreAuthorize("hasRole('SHIPPER')")
     @GetMapping("/orders/my-orders")
     public ApiResponse<List<OrderResponse>> getMyActiveOrders(Principal principal) {
