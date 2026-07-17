@@ -1,6 +1,7 @@
 package com.baemin_mini.controller;
 
 import com.baemin_mini.common.ApiResponse;
+import com.baemin_mini.domain.enums.OrderStatus;
 import com.baemin_mini.dto.order.OrderFeeRequest;
 import com.baemin_mini.dto.order.OrderFeeResponse;
 import com.baemin_mini.dto.order.OrderRequest;
@@ -61,7 +62,7 @@ public class OrderController {
     @PreAuthorize("hasAnyRole('RESTAURANT', 'ADMIN')")
     public ResponseEntity<ApiResponse<List<OrderResponse>>> getRestaurantOrders(
             Principal principal,
-            @RequestParam Long restaurantId) {
+            @RequestParam(required = false) Long restaurantId) {
         return ResponseEntity.ok(ApiResponse.success(orderService.getRestaurantOrders(principal.getName(), restaurantId)));
     }
 
@@ -70,7 +71,7 @@ public class OrderController {
     public ResponseEntity<ApiResponse<OrderResponse>> updateOrderStatus(
             Principal principal,
             @PathVariable Long id,
-            @RequestParam String status) {
+            @RequestParam OrderStatus status) {
         return ResponseEntity.ok(ApiResponse.success(orderService.updateOrderStatus(principal.getName(), id, status)));
     }
 }

@@ -1,5 +1,6 @@
 package com.baemin_mini.service;
 
+import com.baemin_mini.domain.enums.OrderStatus;
 import com.baemin_mini.dto.order.OrderFeeRequest;
 import com.baemin_mini.dto.order.OrderFeeResponse;
 import com.baemin_mini.dto.order.OrderRequest;
@@ -18,5 +19,5 @@ public interface OrderService {
 
     List<OrderTrackingResponse> getOrderTracking(String username, Long orderId);
 
-    OrderResponse updateOrderStatus(String username, Long orderId, String statusStr);
+    OrderResponse updateOrderStatus(String username, Long orderId, OrderStatus status);
 }

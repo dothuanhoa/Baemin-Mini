@@ -190,6 +190,24 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public List<OrderResponse> getRestaurantOrders(String username, Long restaurantId) {
         User actor = getCurrentUser(username);
+        if (restaurantId == null) {
+            if (hasRole(actor, RoleName.ADMIN)) {
+                return orderRepository.findByStatusInOrderByCreatedAtDesc(RESTAURANT_VISIBLE_STATUSES)
+                        .stream().map(this::mapToResponse).toList();
+            }
+
+            List<Long> ownedRestaurantIds = restaurantRepository.findByOwnerId(actor.getId()).stream()
+                    .map(Restaurant::getId)
+                    .toList();
+            if (ownedRestaurantIds.isEmpty()) {
+                throw new NotFoundException("Restaurant not found");
+            }
+            return orderRepository.findByRestaurantIdInAndStatusInOrderByCreatedAtDesc(
+                            ownedRestaurantIds,
+                            RESTAURANT_VISIBLE_STATUSES)
+                    .stream().map(this::mapToResponse).toList();
+        }
+
         Restaurant restaurant = restaurantRepository.findById(restaurantId)
                 .orElseThrow(() -> new NotFoundException("Restaurant not found"));
         if (!hasRole(actor, RoleName.ADMIN) && !restaurant.getOwner().getId().equals(actor.getId())) {
@@ -218,12 +236,11 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public OrderResponse updateOrderStatus(String username, Long orderId, String statusStr) {
+    public OrderResponse updateOrderStatus(String username, Long orderId, OrderStatus newStatus) {
         User actor = getCurrentUser(username);
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new NotFoundException("Order not found"));
 
-        OrderStatus newStatus = parseStatus(statusStr);
         assertCanUpdateStatus(actor, order, newStatus);
         assertValidTransition(order.getStatus(), newStatus);
         if (newStatus == OrderStatus.DELIVERED && order.getPaymentMethod() == PaymentMethod.COD) {
@@ -249,14 +266,6 @@ public class OrderServiceImpl implements OrderService {
     private User getCurrentUser(String username) {
         return userRepository.findByUsername(username)
                 .orElseThrow(() -> new NotFoundException("User not found"));
-    }
-
-    private OrderStatus parseStatus(String statusStr) {
-        try {
-            return OrderStatus.valueOf(statusStr.toUpperCase());
-        } catch (IllegalArgumentException ex) {
-            throw new BadRequestException("Invalid order status");
-        }
     }
 
     private void assertCanViewOrder(User actor, Order order) {
