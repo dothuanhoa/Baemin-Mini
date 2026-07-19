@@ -92,16 +92,16 @@ public class VoucherServiceImpl implements VoucherService {
     @Transactional(readOnly = true)
     public VoucherApplyResponse applyVoucher(VoucherApplyRequest request) {
         Voucher voucher = voucherRepository.findByCodeIgnoreCaseAndIsActiveTrue(request.getCode())
-                .orElseThrow(() -> new NotFoundException("Voucher not found or inactive"));
+                .orElseThrow(() -> new NotFoundException("Voucher không tồn tại hoặc đã hết hạn"));
 
         LocalDateTime now = LocalDateTime.now();
         if (now.isBefore(voucher.getStartDate()) || now.isAfter(voucher.getEndDate())) {
-            throw new BadRequestException("Voucher is expired or not yet active");
+            throw new BadRequestException("Voucher chưa hoạt động hoặc đã hết hạn");
         }
 
         BigDecimal itemsTotal = request.getItemsTotal();
         if (itemsTotal.compareTo(voucher.getMinOrderValue()) < 0) {
-            throw new BadRequestException("Order total does not meet the minimum requirement for this voucher");
+            throw new BadRequestException("Giá trị đơn hàng chưa đạt mức tối thiểu của voucher");
         }
 
         BigDecimal discountAmount = calculateDiscount(voucher, itemsTotal);

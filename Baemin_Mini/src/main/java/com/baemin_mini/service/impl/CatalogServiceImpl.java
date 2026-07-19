@@ -60,7 +60,7 @@ public class CatalogServiceImpl implements CatalogService {
         if (!restaurantRepository.existsById(restaurantId)) {
             throw new NotFoundException("Restaurant not found");
         }
-        return menuItemRepository.findByRestaurantIdAndIsAvailableTrue(restaurantId).stream()
+        return menuItemRepository.findByRestaurantId(restaurantId).stream()
                 .map(this::toMenuItemResponse)
                 .toList();
     }
