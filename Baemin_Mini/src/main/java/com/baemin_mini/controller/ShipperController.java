@@ -82,6 +82,12 @@ public class ShipperController {
     }
 
     @PreAuthorize("hasRole('SHIPPER')")
+    @GetMapping("/orders/history")
+    public ApiResponse<List<OrderResponse>> getMyOrderHistory(Principal principal) {
+        return ApiResponse.success("Shipper order history fetched", shipperProfileService.getMyOrderHistory(principal.getName()));
+    }
+
+    @PreAuthorize("hasRole('SHIPPER')")
     @PutMapping("/orders/{id}/start-delivery")
     public ApiResponse<OrderResponse> startDelivery(
             Principal principal,

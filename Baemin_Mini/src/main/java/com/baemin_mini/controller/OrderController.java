@@ -58,6 +58,14 @@ public class OrderController {
         return ResponseEntity.ok(ApiResponse.success(orderService.getOrderTracking(principal.getName(), id)));
     }
 
+    @PutMapping("/orders/{id}/cancel")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ResponseEntity<ApiResponse<OrderResponse>> cancelMyOrder(
+            Principal principal,
+            @PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(orderService.cancelMyOrder(principal.getName(), id)));
+    }
+
     @GetMapping("/restaurant/orders")
     @PreAuthorize("hasAnyRole('RESTAURANT', 'ADMIN')")
     public ResponseEntity<ApiResponse<List<OrderResponse>>> getRestaurantOrders(

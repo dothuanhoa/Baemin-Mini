@@ -16,6 +16,8 @@ public interface ShipperProfileService {
 
     List<OrderResponse> getMyActiveOrders(String username);
 
+    List<OrderResponse> getMyOrderHistory(String username);
+
     OrderResponse startDelivery(String username, Long orderId);
 
     OrderResponse completeDelivery(String username, Long orderId);

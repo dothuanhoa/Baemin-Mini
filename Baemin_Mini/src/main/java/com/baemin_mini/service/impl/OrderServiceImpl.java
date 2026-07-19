@@ -3,16 +3,19 @@ package com.baemin_mini.service.impl;
 import com.baemin_mini.common.exception.BadRequestException;
 import com.baemin_mini.common.exception.ForbiddenException;
 import com.baemin_mini.common.exception.NotFoundException;
+import com.baemin_mini.domain.entity.DeliveryAssignment;
 import com.baemin_mini.domain.entity.MenuItem;
 import com.baemin_mini.domain.entity.Order;
 import com.baemin_mini.domain.entity.OrderItem;
 import com.baemin_mini.domain.entity.OrderTracking;
 import com.baemin_mini.domain.entity.Restaurant;
 import com.baemin_mini.domain.entity.User;
+import com.baemin_mini.domain.enums.DeliveryAssignmentStatus;
 import com.baemin_mini.domain.enums.OrderStatus;
 import com.baemin_mini.domain.enums.PaymentMethod;
 import com.baemin_mini.domain.enums.PaymentStatus;
 import com.baemin_mini.domain.enums.RoleName;
+import com.baemin_mini.domain.enums.ShipperStatus;
 import com.baemin_mini.dto.order.OrderFeeRequest;
 import com.baemin_mini.dto.order.OrderFeeResponse;
 import com.baemin_mini.dto.order.OrderItemRequest;
@@ -23,9 +26,11 @@ import com.baemin_mini.dto.order.OrderTrackingResponse;
 import com.baemin_mini.dto.voucher.VoucherApplyRequest;
 import com.baemin_mini.dto.voucher.VoucherApplyResponse;
 import com.baemin_mini.repository.MenuItemRepository;
+import com.baemin_mini.repository.DeliveryAssignmentRepository;
 import com.baemin_mini.repository.OrderRepository;
 import com.baemin_mini.repository.OrderTrackingRepository;
 import com.baemin_mini.repository.RestaurantRepository;
+import com.baemin_mini.repository.ShipperProfileRepository;
 import com.baemin_mini.repository.UserRepository;
 import com.baemin_mini.service.DeliveryDispatchService;
 import com.baemin_mini.service.FeeService;
@@ -53,6 +58,8 @@ public class OrderServiceImpl implements OrderService {
     private final RestaurantRepository restaurantRepository;
     private final MenuItemRepository menuItemRepository;
     private final UserRepository userRepository;
+    private final DeliveryAssignmentRepository deliveryAssignmentRepository;
+    private final ShipperProfileRepository shipperProfileRepository;
     private final FeeService feeService;
     private final VoucherService voucherService;
     private final SseService sseService;
@@ -247,6 +254,7 @@ public class OrderServiceImpl implements OrderService {
             order.setPaymentStatus(PaymentStatus.PAID);
         }
         if (newStatus == OrderStatus.CANCELLED) {
+            releaseAcceptedShipperIfPresent(order, "Order cancelled before delivery started");
             order.setPaymentStatus(PaymentStatus.CANCELLED);
         }
 
@@ -261,6 +269,59 @@ public class OrderServiceImpl implements OrderService {
         order.addTracking(tracking);
 
         return mapToResponse(orderRepository.save(order));
+    }
+
+    @Override
+    @Transactional
+    public OrderResponse cancelMyOrder(String username, Long orderId) {
+        User customer = getCurrentUser(username);
+        Order order = orderRepository.findByIdForUpdate(orderId)
+                .orElseThrow(() -> new NotFoundException("Order not found"));
+
+        if (!order.getCustomerId().equals(customer.getId())) {
+            throw new ForbiddenException("You do not have permission to cancel this order");
+        }
+        if (order.getStatus() != OrderStatus.PLACED) {
+            throw new BadRequestException("Only placed orders can be cancelled by customer");
+        }
+
+        releaseAcceptedShipperIfPresent(order, "Customer cancelled before restaurant started preparing");
+
+        order.setStatus(OrderStatus.CANCELLED);
+        order.setPaymentStatus(PaymentStatus.CANCELLED);
+        order.addTracking(OrderTracking.builder()
+                .status(OrderStatus.CANCELLED)
+                .actorRole(RoleName.CUSTOMER.name())
+                .actorId(customer.getId())
+                .note("Customer cancelled order")
+                .build());
+
+        return mapToResponse(orderRepository.save(order));
+    }
+
+    private void releaseAcceptedShipperIfPresent(Order order, String reason) {
+        Long shipperId = order.getShipperId();
+        if (shipperId == null) {
+            return;
+        }
+
+        deliveryAssignmentRepository
+                .findFirstByOrder_IdAndShipper_IdAndStatusOrderByCreatedAtDesc(
+                        order.getId(), shipperId, DeliveryAssignmentStatus.ACCEPTED)
+                .ifPresent(assignment -> cancelAssignment(assignment, reason));
+
+        shipperProfileRepository.findByUserId(shipperId).ifPresent(profile -> {
+            profile.setCurrentStatus(ShipperStatus.AVAILABLE);
+            shipperProfileRepository.save(profile);
+        });
+        order.setShipperId(null);
+    }
+
+    private void cancelAssignment(DeliveryAssignment assignment, String reason) {
+        assignment.setStatus(DeliveryAssignmentStatus.CANCELLED);
+        assignment.setCancelReason(reason);
+        assignment.setCancelledAt(java.time.LocalDateTime.now());
+        deliveryAssignmentRepository.save(assignment);
     }
 
     private User getCurrentUser(String username) {

@@ -20,4 +20,6 @@ public interface OrderService {
     List<OrderTrackingResponse> getOrderTracking(String username, Long orderId);
 
     OrderResponse updateOrderStatus(String username, Long orderId, OrderStatus status);
+
+    OrderResponse cancelMyOrder(String username, Long orderId);
 }

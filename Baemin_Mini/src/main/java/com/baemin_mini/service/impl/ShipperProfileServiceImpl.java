@@ -37,6 +37,9 @@ public class ShipperProfileServiceImpl implements ShipperProfileService {
             OrderStatus.PLACED,
             OrderStatus.PREPARING,
             OrderStatus.DELIVERING);
+    private static final List<OrderStatus> HISTORY_DELIVERY_STATUSES = List.of(
+            OrderStatus.DELIVERED,
+            OrderStatus.CANCELLED);
     private final UserRepository userRepository;
     private final ShipperProfileRepository shipperProfileRepository;
     private final OrderRepository orderRepository;
@@ -88,6 +91,16 @@ public class ShipperProfileServiceImpl implements ShipperProfileService {
     public List<OrderResponse> getMyActiveOrders(String username) {
         User user = getUser(username);
         return orderRepository.findByShipperIdAndStatusInOrderByCreatedAtDesc(user.getId(), ACTIVE_DELIVERY_STATUSES)
+                .stream()
+                .map(this::toOrderResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderResponse> getMyOrderHistory(String username) {
+        User user = getUser(username);
+        return orderRepository.findByShipperIdAndStatusInOrderByCreatedAtDesc(user.getId(), HISTORY_DELIVERY_STATUSES)
                 .stream()
                 .map(this::toOrderResponse)
                 .toList();
